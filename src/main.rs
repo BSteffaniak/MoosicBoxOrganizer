@@ -25,17 +25,14 @@ fn main() {
 
     fs::read_dir(source_dir)
         .unwrap()
-        .into_iter()
         .filter_map(|p| p.ok())
         .filter(|p| p.metadata().unwrap().is_dir())
         .map(|p| p.path())
         .for_each(|path| {
             let flac = fs::read_dir(path.clone())
                 .unwrap()
-                .into_iter()
                 .filter_map(|p| p.ok())
-                .filter(|p| p.file_name().to_str().unwrap().ends_with(".flac"))
-                .next()
+                .find(|p| p.file_name().to_str().unwrap().ends_with(".flac"))
                 .unwrap();
 
             let tag = Tag::new()
@@ -64,7 +61,7 @@ fn main() {
                 let source = path.to_str().unwrap().clone();
                 let target = artist_dir.to_str().unwrap().clone();
                 println!("Copying album dir {} -> {}", source, target);
-                fs_extra::dir::copy(source, target, &copy_options);
+                let _ = fs_extra::dir::copy(source, target, &copy_options);
             }
         });
 }
