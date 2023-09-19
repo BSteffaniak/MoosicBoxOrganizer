@@ -23,12 +23,12 @@ fn main() {
 
     let copy_options = CopyOptions::new();
 
-    fs::read_dir(source_dir)
+    let updated = fs::read_dir(source_dir)
         .unwrap()
         .filter_map(|p| p.ok())
         .filter(|p| p.metadata().unwrap().is_dir())
         .map(|p| p.path())
-        .for_each(|path| {
+        .filter_map(|path| {
             let flac = fs::read_dir(path.clone())
                 .unwrap()
                 .filter_map(|p| p.ok())
@@ -42,10 +42,12 @@ fn main() {
             let title = tag.title().unwrap();
             let album = tag.album_title().unwrap_or("(none)");
             let artist = tag.artist().or(tag.album_artist()).unwrap();
+            let album_dir_name = path.file_name().unwrap().to_str().unwrap();
 
             println!("====== {} ======", path.clone().to_str().unwrap());
             println!("title: {}", title);
             println!("album title: {}", album);
+            println!("album directory name: {}", album_dir_name);
             println!("artist: {}", artist);
 
             let artist_dir = Path::new(&target_dir).join(artist);
@@ -55,13 +57,26 @@ fn main() {
                 let _ = fs::create_dir(artist_dir.clone());
             }
 
-            let album_dir = artist_dir.join(album);
+            let album_dir = artist_dir.join(album_dir_name);
 
             if !album_dir.is_dir() {
                 let source = path.to_str().unwrap().clone();
                 let target = artist_dir.to_str().unwrap().clone();
                 println!("Copying album dir {} -> {}", source, target);
                 let _ = fs_extra::dir::copy(source, target, &copy_options);
+                Some(String::from(album_dir.to_str().unwrap()))
+            } else {
+                None
             }
-        });
+        })
+        .collect::<Vec<_>>();
+
+    println!("==================================================");
+
+    if !updated.is_empty() {
+        println!("Updated following albums:");
+        updated.iter().for_each(|p| println!("{}", p));
+    } else {
+        println!("All up-to-date");
+    }
 }
