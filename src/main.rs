@@ -45,13 +45,11 @@ fn main() {
             let title = tag.title().unwrap();
             let album = tag.album_title().unwrap_or("(none)");
             let artist = tag.artist().or(tag.album_artist()).unwrap();
-            let released = tag.date_released().unwrap().to_string();
 
             println!("====== {} ======", path.clone().to_str().unwrap());
             println!("title: {}", title);
             println!("album title: {}", album);
             println!("artist: {}", artist);
-            println!("released {}", released);
 
             let artist_dir = Path::new(&target_dir).join(artist);
 
