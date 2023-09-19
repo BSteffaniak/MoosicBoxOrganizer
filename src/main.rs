@@ -29,11 +29,21 @@ fn main() {
         .filter(|p| p.metadata().unwrap().is_dir())
         .map(|p| p.path())
         .filter_map(|path| {
-            let flac = fs::read_dir(path.clone())
+            let flacs = fs::read_dir(path.clone())
                 .unwrap()
                 .filter_map(|p| p.ok())
-                .find(|p| p.file_name().to_str().unwrap().ends_with(".flac"))
-                .unwrap();
+                .filter(|p| p.file_name().to_str().unwrap().ends_with(".flac"))
+                .collect::<Vec<_>>();
+
+            if flacs.is_empty() {
+                println!(
+                    "Encountered empty directory {}",
+                    path.clone().to_str().unwrap()
+                );
+                return None;
+            }
+
+            let flac = flacs.first().unwrap();
 
             let tag = Tag::new()
                 .read_from_path(flac.path().to_str().unwrap())
@@ -59,12 +69,51 @@ fn main() {
 
             let album_dir = artist_dir.join(album_dir_name);
 
-            if !album_dir.is_dir() {
+            let existing_flacs = if album_dir.is_dir() {
+                fs::read_dir(album_dir.clone())
+                    .unwrap()
+                    .filter_map(|p| p.ok())
+                    .filter(|p| p.file_name().to_str().unwrap().ends_with(".flac"))
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
+
+            if flacs.len() > existing_flacs.len() {
                 let source = path.to_str().unwrap().clone();
                 let target = artist_dir.to_str().unwrap().clone();
                 println!("Copying album dir {} -> {}", source, target);
-                let _ = fs_extra::dir::copy(source, target, &copy_options);
-                Some(String::from(album_dir.to_str().unwrap()))
+                if !album_dir.is_dir() {
+                    let _ = fs_extra::dir::copy(source, target, &copy_options);
+                    Some(String::from(album_dir.to_str().unwrap()))
+                } else {
+                    let copied_files = fs::read_dir(path.clone())
+                        .unwrap()
+                        .filter_map(|p| p.ok())
+                        .filter_map(|source| {
+                            let target = Path::new(album_dir.to_str().unwrap())
+                                .join(source.path().file_name().unwrap().to_str().unwrap());
+
+                            if target.is_file() {
+                                None
+                            } else {
+                                Some((source.path(), target))
+                            }
+                        })
+                        .map(|(source, target)| {
+                            let track_source = source.to_str().unwrap();
+                            let track_target = target.to_str().unwrap();
+                            let _ = fs::copy(track_source, track_target);
+                            format!("\t{}", source.file_name().unwrap().to_str().unwrap())
+                        })
+                        .collect::<Vec<_>>();
+
+                    Some(format!(
+                        "{}\n{}",
+                        album_dir.to_str().unwrap(),
+                        copied_files.join("\n"),
+                    ))
+                }
             } else {
                 None
             }
