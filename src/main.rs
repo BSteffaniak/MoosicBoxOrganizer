@@ -62,7 +62,7 @@ impl StringUtils for str {
     }
 }
 
-fn save_bytes_to_file(bytes: &[u8], path: PathBuf) {
+fn save_bytes_to_file(bytes: &[u8], path: &PathBuf) {
     let mut file = fs::OpenOptions::new()
         .create(true)
         .write(true)
@@ -84,12 +84,13 @@ async fn copy_album_dir_contents(
         .filter_map(|p| p.ok())
         .collect::<Vec<_>>();
 
-    let flacs = files
+    let music_file_pattern = Regex::new(r".+\.(flac|m4a|mp3)").unwrap();
+    let audio_files = files
         .iter()
-        .filter(|p| p.file_name().to_str().unwrap().ends_with(".flac"))
+        .filter(|p| music_file_pattern.is_match(p.file_name().to_str().unwrap()))
         .collect::<Vec<_>>();
 
-    if flacs.is_empty() {
+    if audio_files.is_empty() {
         println!(
             "Encountered empty directory {}",
             path.clone().to_str().unwrap()
@@ -97,10 +98,10 @@ async fn copy_album_dir_contents(
         return None;
     }
 
-    let flac = flacs.first().unwrap();
+    let music_file = audio_files.first().unwrap();
 
     let tag = Tag::new()
-        .read_from_path(flac.path().to_str().unwrap())
+        .read_from_path(music_file.path().to_str().unwrap())
         .unwrap();
 
     let title = tag.title().unwrap();
@@ -165,7 +166,7 @@ async fn copy_album_dir_contents(
                                     match resp.body().await {
                                         Ok(bytes) => {
                                             let cover_file_path = path.join("cover.jpg");
-                                            save_bytes_to_file(&bytes, cover_file_path);
+                                            save_bytes_to_file(&bytes, &cover_file_path);
                                             created_new_cover = true;
                                         }
                                         Err(error) => {
@@ -254,14 +255,14 @@ async fn copy_album_dir_contents(
                                                                     Ok(bytes) => {
                                                                         save_bytes_to_file(
                                                                             &bytes,
-                                                                            cover_file_path,
+                                                                            &cover_file_path,
                                                                         );
                                                                         created_new_cover = true;
                                                                     }
                                                                     Err(error) => eprintln!(
-                                                                    "Deserialization failure {:?}",
-                                                                    error
-                                                                ),
+                                                                        "Deserialization failure {:?}",
+                                                                        error
+                                                                    ),
                                                                 };
                                                             }
                                                         }
