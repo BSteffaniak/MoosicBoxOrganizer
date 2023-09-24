@@ -124,7 +124,7 @@ async fn copy_album_dir_contents(
                 .is_some_and(|n| n.starts_with("cover."))
         })
     {
-        if let Some(tidal_auth) = tidal_auth {
+        if let Some(tidal_auth) = &tidal_auth {
             if let Some(description) = tag.description() {
                 let tidal_prefix = "https://listen.tidal.com/album/";
                 if description.starts_with(tidal_prefix) {
@@ -144,7 +144,7 @@ async fn copy_album_dir_contents(
                     {
                         Ok(resp) => Some(resp),
                         Err(err) => {
-                            eprintln!("Failed to fetch Tidal artist album: {:?}", err);
+                            eprintln!("Deserialization failure {:?}", err);
                             None
                         }
                     } {
@@ -179,6 +179,10 @@ async fn copy_album_dir_contents(
                     }
                 }
             }
+        }
+
+        if tidal_auth.is_some() && !created_new_cover {
+            panic!("Failed to fetch Tidal artist album");
         }
 
         if !created_new_cover {
