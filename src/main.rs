@@ -114,6 +114,8 @@ async fn copy_album_dir_contents(
     println!("album title: {}", album);
     println!("album directory name: {}", album_dir_name);
     println!("artist: {}", artist);
+    println!("description: {:?}", tag.description());
+    println!("comment: {:?}", tag.comment());
 
     let mut created_new_cover = false;
 
@@ -125,7 +127,7 @@ async fn copy_album_dir_contents(
         })
     {
         if let Some(tidal_auth) = &tidal_auth {
-            if let Some(description) = tag.description() {
+            if let Some(description) = tag.description().or(tag.comment()) {
                 let tidal_prefix = "https://listen.tidal.com/album/";
                 if description.starts_with(tidal_prefix) {
                     let remainder = description.strip_prefix(tidal_prefix).unwrap();
