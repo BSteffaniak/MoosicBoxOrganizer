@@ -1,9 +1,8 @@
 use audiotags::Tag;
-use awc::Connector;
 use clap::{command, Parser};
 use fs_extra::dir::CopyOptions;
-use openssl::ssl::{SslConnector, SslMethod};
 use regex::Regex;
+use reqwest::{header, Client};
 use std::ops::{Bound, RangeBounds};
 use std::{
     fs::{self},
@@ -75,7 +74,7 @@ fn save_bytes_to_file(bytes: &[u8], path: &PathBuf) {
 async fn copy_album_dir_contents(
     target_dir: &str,
     path: PathBuf,
-    client: &awc::Client,
+    client: &Client,
     fetch_covers: bool,
     tidal_auth: Option<String>,
 ) -> Option<String> {
@@ -135,7 +134,7 @@ async fn copy_album_dir_contents(
 
                     if let Some(resp) = match client
                         .get(request_url)
-                        .insert_header(("Authorization", format!("Bearer {tidal_auth}")))
+                        .header("Authorization", format!("Bearer {tidal_auth}"))
                         .send()
                         .await
                         .unwrap()
@@ -156,14 +155,14 @@ async fn copy_album_dir_contents(
                                 );
                                 println!("Fetching from {request_url}");
 
-                                if let Some(mut resp) = match client.get(request_url).send().await {
+                                if let Some(resp) = match client.get(request_url).send().await {
                                     Ok(resp) => Some(resp),
                                     Err(err) => {
                                         eprintln!("Failed to fetch tidal artist album: {:?}", err);
                                         None
                                     }
                                 } {
-                                    match resp.body().await {
+                                    match resp.bytes().await {
                                         Ok(bytes) => {
                                             let cover_file_path = path.join("cover.jpg");
                                             save_bytes_to_file(&bytes, &cover_file_path);
@@ -244,7 +243,7 @@ async fn copy_album_dir_contents(
                                                             let cover_file_path = path.join(
                                                                 format!("cover.{}", extension),
                                                             );
-                                                            if let Some(mut resp) = match client
+                                                            if let Some(resp) = match client
                                                                 .get(main_image)
                                                                 .send()
                                                                 .await
@@ -255,7 +254,7 @@ async fn copy_album_dir_contents(
                                                                     None
                                                                 }
                                                             } {
-                                                                match resp.body().await {
+                                                                match resp.bytes().await {
                                                                     Ok(bytes) => {
                                                                         save_bytes_to_file(
                                                                             &bytes,
@@ -358,19 +357,26 @@ struct Args {
     tidal_auth: Option<String>,
 }
 
-#[actix_rt::main]
+#[tokio::main]
 async fn main() {
     let args = Args::parse();
 
     let start = SystemTime::now();
 
-    let builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    let artwork_client = awc::Client::builder()
-        .add_default_header(("Accept", "application/json"))
-        .add_default_header(("User-Agent", "PostmanRuntime/7.33.0"))
-        .connector(Connector::new().openssl(builder.build()))
+    let mut default_headers = header::HeaderMap::new();
+    default_headers.insert(
+        "Accept",
+        header::HeaderValue::from_static("application/json"),
+    );
+    default_headers.insert(
+        "User-Agent",
+        header::HeaderValue::from_static("PostmanRuntime/7.33.0"),
+    );
+    let artwork_client = Client::builder()
+        .default_headers(default_headers)
         .timeout(Duration::from_secs(60))
-        .finish();
+        .build()
+        .unwrap();
 
     let source_dir = args.source;
     let target_dir = args.target;
