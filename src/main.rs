@@ -109,6 +109,7 @@ async fn copy_album_dir_contents(
     let album_dir_name = path.file_name().unwrap().to_str().unwrap();
 
     println!("====== {} ======", path.clone().to_str().unwrap());
+    println!("file: {}", music_file.path().to_str().unwrap());
     println!("title: {}", title);
     println!("album title: {}", album);
     println!("album directory name: {}", album_dir_name);
