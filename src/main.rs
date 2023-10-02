@@ -119,13 +119,18 @@ async fn copy_album_dir_contents(
 
     let mut created_new_cover = false;
 
-    if fetch_covers
-        && !files.iter().any(|f| {
-            f.file_name()
-                .to_str()
-                .is_some_and(|n| n.starts_with("cover."))
-        })
-    {
+    let contains_album_cover = files.iter().any(|f| {
+        f.file_name()
+            .to_str()
+            .is_some_and(|n| n.starts_with("cover."))
+    });
+    let contains_artist_cover = files.iter().any(|f| {
+        f.file_name()
+            .to_str()
+            .is_some_and(|n| n.starts_with("artist."))
+    });
+
+    if fetch_covers && (!contains_album_cover || !contains_artist_cover) {
         if let Some(tidal_auth) = &tidal_auth {
             if let Some(description) = tag.description().or(tag.comment()) {
                 let tidal_prefix = "https://listen.tidal.com/album/";
@@ -150,31 +155,85 @@ async fn copy_album_dir_contents(
                             None
                         }
                     } {
-                        if let Some(cover) = resp.get("cover") {
-                            if let Some(cover) = cover.as_str() {
-                                let cover_path = cover.replace('-', "/");
-                                let request_url = format!(
-                                    "https://resources.tidal.com/images/{cover_path}/1280x1280.jpg"
-                                );
-                                println!("Fetching from {request_url}");
+                        if !contains_artist_cover {
+                            if let Some(artist) = resp.get("artist") {
+                                if let Some(artist) = artist.as_object() {
+                                    if let Some(artist_pic) = artist.get("picture") {
+                                        if let Some(artist_pic_path) = artist_pic.as_str() {
+                                            let artist_pic_path = artist_pic_path.replace('-', "/");
 
-                                if let Some(resp) = match client.get(request_url).send().await {
-                                    Ok(resp) => Some(resp),
-                                    Err(err) => {
-                                        eprintln!("Failed to fetch tidal artist album: {:?}", err);
-                                        None
+                                            let request_url = format!(
+                                                "https://resources.tidal.com/images/{artist_pic_path}/750x750.jpg"
+                                            );
+                                            println!("Fetching from {request_url}");
+
+                                            if let Some(resp) = match client
+                                                .get(request_url)
+                                                .send()
+                                                .await
+                                            {
+                                                Ok(resp) => Some(resp),
+                                                Err(err) => {
+                                                    eprintln!(
+                                                        "Failed to fetch tidal artist picture: {:?}",
+                                                        err
+                                                    );
+                                                    None
+                                                }
+                                            } {
+                                                match resp.bytes().await {
+                                                    Ok(bytes) => {
+                                                        let cover_file_path =
+                                                            path.join("artist.jpg");
+                                                        save_bytes_to_file(
+                                                            &bytes,
+                                                            &cover_file_path,
+                                                        );
+                                                        created_new_cover = true;
+                                                    }
+                                                    Err(error) => {
+                                                        eprintln!(
+                                                            "Deserialization failure {:?}",
+                                                            error
+                                                        )
+                                                    }
+                                                };
+                                            }
+                                        }
                                     }
-                                } {
-                                    match resp.bytes().await {
-                                        Ok(bytes) => {
-                                            let cover_file_path = path.join("cover.jpg");
-                                            save_bytes_to_file(&bytes, &cover_file_path);
-                                            created_new_cover = true;
+                                }
+                            }
+                        }
+                        if !contains_album_cover {
+                            if let Some(cover) = resp.get("cover") {
+                                if let Some(cover) = cover.as_str() {
+                                    let cover_path = cover.replace('-', "/");
+                                    let request_url = format!(
+                                        "https://resources.tidal.com/images/{cover_path}/1280x1280.jpg"
+                                    );
+                                    println!("Fetching from {request_url}");
+
+                                    if let Some(resp) = match client.get(request_url).send().await {
+                                        Ok(resp) => Some(resp),
+                                        Err(err) => {
+                                            eprintln!(
+                                                "Failed to fetch tidal artist album: {:?}",
+                                                err
+                                            );
+                                            None
                                         }
-                                        Err(error) => {
-                                            eprintln!("Deserialization failure {:?}", error)
-                                        }
-                                    };
+                                    } {
+                                        match resp.bytes().await {
+                                            Ok(bytes) => {
+                                                let cover_file_path = path.join("cover.jpg");
+                                                save_bytes_to_file(&bytes, &cover_file_path);
+                                                created_new_cover = true;
+                                            }
+                                            Err(error) => {
+                                                eprintln!("Deserialization failure {:?}", error)
+                                            }
+                                        };
+                                    }
                                 }
                             }
                         }
@@ -184,16 +243,14 @@ async fn copy_album_dir_contents(
         }
 
         if tidal_auth.is_some() && !created_new_cover {
-            panic!("Failed to fetch Tidal artist album");
-        }
-
-        if !created_new_cover {
+            eprintln!("Failed to fetch Tidal artist album");
+        } else if !created_new_cover {
             let re = Regex::new(r"[^A-Za-z0-9 _]").unwrap();
             let request_url = format!(
-            "http://musicbrainz.org/ws/2/release/?query=artist:{}%20AND%20title:{}%20AND%20packaging:None",
-            re.replace_all(artist, "").replace(' ', "%20"),
-            re.replace_all(album, "").replace(' ', "%20"),
-        );
+                "http://musicbrainz.org/ws/2/release/?query=artist:{}%20AND%20title:{}%20AND%20packaging:None",
+                re.replace_all(artist, "").replace(' ', "%20"),
+                re.replace_all(album, "").replace(' ', "%20"),
+            );
             println!("Fetching from {request_url}",);
             if let Some(resp) = match client
                 .get(request_url)
