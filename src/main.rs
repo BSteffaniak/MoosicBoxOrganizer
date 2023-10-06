@@ -72,7 +72,7 @@ fn save_bytes_to_file(bytes: &[u8], path: &PathBuf) {
 }
 
 async fn copy_album_dir_contents(
-    target_dir: &str,
+    target_dir: Option<String>,
     path: PathBuf,
     client: &Client,
     fetch_covers: bool,
@@ -343,58 +343,62 @@ async fn copy_album_dir_contents(
         }
     }
 
-    let artist_dir = Path::new(&target_dir).join(artist);
+    if let Some(target_dir) = target_dir {
+        let artist_dir = Path::new(&target_dir).join(artist);
 
-    if !artist_dir.is_dir() {
-        println!("Creating artist dir {}", artist_dir.to_str().unwrap());
-        let _ = fs::create_dir(artist_dir.clone());
-    }
+        if !artist_dir.is_dir() {
+            println!("Creating artist dir {}", artist_dir.to_str().unwrap());
+            let _ = fs::create_dir(artist_dir.clone());
+        }
 
-    let album_dir = artist_dir.join(album_dir_name);
+        let album_dir = artist_dir.join(album_dir_name);
 
-    let existing_files = if album_dir.is_dir() {
-        fs::read_dir(album_dir.clone())
-            .unwrap()
-            .filter_map(|p| p.ok())
-            .collect::<Vec<_>>()
-    } else {
-        vec![]
-    };
-
-    if created_new_cover || files.len() > existing_files.len() {
-        let source = path.to_str().unwrap().clone();
-        let target = artist_dir.to_str().unwrap().clone();
-        println!("Copying album dir {} -> {}", source, target);
-        if !album_dir.is_dir() {
-            let _ = fs_extra::dir::copy(source, target, &CopyOptions::new());
-            Some(String::from(album_dir.to_str().unwrap()))
-        } else {
-            let copied_files = fs::read_dir(path.clone())
+        let existing_files = if album_dir.is_dir() {
+            fs::read_dir(album_dir.clone())
                 .unwrap()
                 .filter_map(|p| p.ok())
-                .filter_map(|source| {
-                    let target = Path::new(album_dir.to_str().unwrap())
-                        .join(source.path().file_name().unwrap().to_str().unwrap());
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
 
-                    if target.is_file() {
-                        None
-                    } else {
-                        Some((source.path(), target))
-                    }
-                })
-                .map(|(source, target)| {
-                    let track_source = source.to_str().unwrap();
-                    let track_target = target.to_str().unwrap();
-                    let _ = fs::copy(track_source, track_target);
-                    format!("\t{}", source.file_name().unwrap().to_str().unwrap())
-                })
-                .collect::<Vec<_>>();
+        if created_new_cover || files.len() > existing_files.len() {
+            let source = path.to_str().unwrap().clone();
+            let target = artist_dir.to_str().unwrap().clone();
+            println!("Copying album dir {} -> {}", source, target);
+            if !album_dir.is_dir() {
+                let _ = fs_extra::dir::copy(source, target, &CopyOptions::new());
+                Some(String::from(album_dir.to_str().unwrap()))
+            } else {
+                let copied_files = fs::read_dir(path.clone())
+                    .unwrap()
+                    .filter_map(|p| p.ok())
+                    .filter_map(|source| {
+                        let target = Path::new(album_dir.to_str().unwrap())
+                            .join(source.path().file_name().unwrap().to_str().unwrap());
 
-            Some(format!(
-                "{}\n{}",
-                album_dir.to_str().unwrap(),
-                copied_files.join("\n"),
-            ))
+                        if target.is_file() {
+                            None
+                        } else {
+                            Some((source.path(), target))
+                        }
+                    })
+                    .map(|(source, target)| {
+                        let track_source = source.to_str().unwrap();
+                        let track_target = target.to_str().unwrap();
+                        let _ = fs::copy(track_source, track_target);
+                        format!("\t{}", source.file_name().unwrap().to_str().unwrap())
+                    })
+                    .collect::<Vec<_>>();
+
+                Some(format!(
+                    "{}\n{}",
+                    album_dir.to_str().unwrap(),
+                    copied_files.join("\n"),
+                ))
+            }
+        } else {
+            None
         }
     } else {
         None
@@ -408,7 +412,7 @@ struct Args {
     source: String,
 
     #[arg(short, long)]
-    target: String,
+    target: Option<String>,
 
     #[arg(short, long)]
     covers: bool,
@@ -450,16 +454,33 @@ async fn main() {
         .filter(|p| p.metadata().unwrap().is_dir())
         .map(|p| p.path())
     {
-        if let Some(value) = copy_album_dir_contents(
-            &target_dir,
-            path,
-            &artwork_client,
-            fetch_covers,
-            args.tidal_auth.clone(),
-        )
-        .await
-        {
-            updated.push(value);
+        let children = path
+            .read_dir()
+            .unwrap()
+            .filter_map(|f| f.ok())
+            .map(|f| f.path())
+            .collect::<Vec<_>>();
+
+        let album_dirs = if children.clone().into_iter().any(|p| p.is_dir()) {
+            children.into_iter().filter(|p| p.is_dir()).collect()
+        } else if path.is_dir() {
+            vec![path]
+        } else {
+            vec![]
+        };
+
+        for dir in album_dirs {
+            if let Some(value) = copy_album_dir_contents(
+                target_dir.clone(),
+                dir,
+                &artwork_client,
+                fetch_covers,
+                args.tidal_auth.clone(),
+            )
+            .await
+            {
+                updated.push(value);
+            }
         }
     }
 
