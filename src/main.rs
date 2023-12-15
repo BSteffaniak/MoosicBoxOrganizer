@@ -363,8 +363,8 @@ async fn copy_album_dir_contents(
         };
 
         if created_new_cover || files.len() > existing_files.len() {
-            let source = path.to_str().unwrap().clone();
-            let target = artist_dir.to_str().unwrap().clone();
+            let source = path.to_str().unwrap();
+            let target = artist_dir.to_str().unwrap();
             println!("Copying album dir {} -> {}", source, target);
             if !album_dir.is_dir() {
                 let _ = fs_extra::dir::copy(source, target, &CopyOptions::new());
