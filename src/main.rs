@@ -3,6 +3,7 @@ use clap::{command, Parser};
 use fs_extra::dir::CopyOptions;
 use regex::Regex;
 use reqwest::{header, Client};
+use serde::Deserialize;
 use std::ops::{Bound, RangeBounds};
 use std::{
     fs::{self},
@@ -418,7 +419,17 @@ struct Args {
     covers: bool,
 
     #[arg(long)]
-    tidal_auth: Option<String>,
+    creds: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename = "camelCase")]
+struct Creds {
+    tidal_token_url: Option<String>,
+    tidal_client_id: Option<String>,
+    tidal_refresh_token: Option<String>,
+
+    tidal_access_token: Option<String>,
 }
 
 #[tokio::main]
@@ -445,6 +456,51 @@ async fn main() {
     let source_dir = args.source;
     let target_dir = args.target;
     let fetch_covers = args.covers;
+
+    let creds = if let Some(path) = args.creds {
+        let data = fs::read_to_string(path).expect("Unable to read file");
+        let res: Creds = serde_json::from_str(&data).expect("Unable to parse");
+        Some(res)
+    } else {
+        None
+    };
+
+    let tidal_access_token = if let Some(creds) = creds {
+        Some(if let Some(access_token) = creds.tidal_access_token {
+            access_token
+        } else if let Some(refresh_token) = creds.tidal_refresh_token {
+            let params = [
+                (
+                    "client_id",
+                    creds.tidal_client_id.expect("Missing clientId"),
+                ),
+                ("grant_type", "refresh_token".to_string()),
+                ("refresh_token", refresh_token),
+                ("scope", "r_user w_usr".to_string()),
+            ];
+
+            let response = artwork_client
+                .post(creds.tidal_token_url.expect("Missing tokenUrl"))
+                .form(&params)
+                .send()
+                .await
+                .unwrap()
+                .json::<serde_json::Value>()
+                .await
+                .expect("Failed to get access_token from token url");
+
+            response
+                .get("access_token")
+                .expect("No access_token on response")
+                .as_str()
+                .expect("access_token is not a string")
+                .to_string()
+        } else {
+            panic!("Invalid creds file");
+        })
+    } else {
+        None
+    };
 
     let mut updated = Vec::new();
 
@@ -475,7 +531,7 @@ async fn main() {
                 dir,
                 &artwork_client,
                 fetch_covers,
-                args.tidal_auth.clone(),
+                tidal_access_token.clone(),
             )
             .await
             {
