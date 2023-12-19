@@ -476,7 +476,7 @@ async fn main() {
                 ),
                 ("grant_type", "refresh_token".to_string()),
                 ("refresh_token", refresh_token),
-                ("scope", "r_user w_usr".to_string()),
+                ("scope", "r_usr w_usr".to_string()),
             ];
 
             let response = artwork_client
