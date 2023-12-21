@@ -160,6 +160,9 @@ async fn copy_album_dir_contents(
                             if let Some(artist) = resp.get("artist") {
                                 if let Some(artist) = artist.as_object() {
                                     if let Some(artist_pic) = artist.get("picture") {
+                                        if artist_pic.is_null() {
+                                            println!("No Artist picture associated with artist");
+                                        }
                                         if let Some(artist_pic_path) = artist_pic.as_str() {
                                             let artist_pic_path = artist_pic_path.replace('-', "/");
 
